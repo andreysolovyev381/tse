@@ -1,12 +1,38 @@
 # Trading Strategy Engine — examples
 
-Twenty-nine strategies for the Trading Strategy Engine, each written twice: once in C++ and once in Python, against the same shared library and the same C ABI. They are the worked examples of the engine's reference manual, and they are ordered as a course rather than as a catalogue.
+The Trading Strategy Engine is a backtesting and trading engine: one shared library behind one narrow C ABI, with C++ and Python wrappers over it, which turns a stream of market data into orders and orders into a book of statistics. The engine is not in this repository.
 
-The engine itself is not in this repository. These texts are what a robot looks like when it is written against it.
+What is here is twenty-nine strategies written against it, each one twice — once in C++ and once in Python, the same strategy on both surfaces. They are the worked examples of the engine's reference manual, ordered as a course rather than as a catalogue, and they are what a robot looks like when it is written for this engine.
+
+## The whole assembly at a glance
+
+![The parts of a robot and the direction data flows through them](assets/architecture.png)
+
+Every robot is assembled by the same twelve declarations, in the same order, and none of them is optional. The account is created; an adapter is opened for the shape of market data that will arrive; an execution is attached; the traded contracts are declared; an Input is given its processor; a Pattern is pointed at that Input; a Rule is pointed at that Pattern; a Robot is given its rules; the robot is started; data is pushed tick by tick; the summary is read; the account is destroyed. The three surfaces differ in spelling alone — the same twelve steps in the same order on each.
+
+Read the diagram in that order and the chain explains itself: the outside world stops at the adapter, your own thinking lives in the input and nowhere else, the pattern is where thinking becomes a decision, the rule is where a decision becomes a fully specified instruction, the robot is the thing you switch on, and the account is what owns the money and remembers what happened. Nothing above the input knows what your processor computed, and nothing below the rule knows why it was asked to trade — which is what lets you replace either end without disturbing the other.
+
+Every directory in this repository is a variation on that one assembly, from a moving-average crossover to a book-imbalance market maker. What differs between them is the body of one callable and the parameters on the rules — never the shape.
+
+## What is in this repository
+
+Every example is a directory named `NN group - name`, holding `cpp/` and `python/`. The five groups are a progression:
+
+| Group | Examples | What it teaches |
+| --- | --- | --- |
+| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search, several contracts, several adapters, save and load, a trading loop |
+| `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
+| `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
+| `stats` | 22–23 | reading the statistics back, and selecting among candidates with a model |
+| `misc` | 24–29 | core affinity, currency, storage regimes, manual booking, bulk actions, the timeserie toolbox |
+
+Shared plumbing — loading a CSV, a rolling mean, the standard entry and exit rule parameters — lives in `helpers/`, so the body of each example contains only what that example is about. The data the examples read lives in `data/`.
+
+The examples are deliberately terse. They carry no self-checking, no assertions and no defensive code: each one prints the few numbers its run produced and leaves the judgement to you.
 
 ## How a robot works
 
-The engine does not execute a program you write; it runs a graph you declare. Market data enters at an adapter, an input turns every tick into a number, a pattern decides when that number means something, a rule turns the decision into a fully specified order, a robot owns the rules and is the thing you start and stop, and an account owns the robots together with everything they touch. This chapter walks that chain once, stage by stage, and explains what each stage is for and why it exists at all. It contains no code by design — the names of the calls appear where they belong to the explanation, and the dedicated chapters that follow give every stage its complete surface on all three languages.
+The engine does not execute a program you write; it runs a graph you declare. Market data enters at an adapter, an input turns every tick into a number, a pattern decides when that number means something, a rule turns the decision into a fully specified order, a robot owns the rules and is the thing you start and stop, and an account owns the robots together with everything they touch. The sections below walk that chain once, stage by stage, and say what each stage is for and why it exists at all. They name the calls but show no code: the reference manual gives every stage its complete surface on all three languages.
 
 Two properties hold along the whole chain. Each stage is declared under a unique label and is referred to by that label from the stage above — a pattern names its inputs, a rule names its pattern, a robot names its rules — so the graph is assembled bottom-up out of names rather than out of pointers. And declaring is not running: nothing in the graph touches data until the robot is started.
 
@@ -99,32 +125,10 @@ Each fill is also journaled by the blotter as a retained trade. `tse_get_trades`
 
 Aggregates come from the same store. `tse_get_summary` folds the whole account into a `TseSummary`; `tse_get_robot_summary` and `tse_get_summaries` do the same per robot. Beyond the summary lies the ex-post layer, which buckets each robot's trades over a time step and scores them: `tse_ex_post_save` writes the two-table SQLite database, while `tse_ex_post_create` keeps a live object whose feature matrices are read through `tse_ex_post_feature_momentum`, `tse_ex_post_feature_ewma` and `tse_ex_post_feature_level_crossings` — the projections a model uses to choose among strategy candidates. Trades executed outside the engine can be folded into the same picture with `tse_book_trade` and `tse_book_trade_with_exposure`.
 
-### The whole assembly at a glance
-
-![The parts of a robot and the direction data flows through them](assets/architecture.png)
-
-Every robot is assembled by the same twelve declarations, in the same order, and none of them is optional. The account is created; an adapter is opened for the shape of market data that will arrive; an execution is attached; the traded contracts are declared; an Input is given its processor; a Pattern is pointed at that Input; a Rule is pointed at that Pattern; a Robot is given its rules; the robot is started; data is pushed tick by tick; the summary is read; the account is destroyed. The three surfaces differ in spelling alone — the same twelve steps in the same order on each.
-
-Read the diagram in that order and the chain explains itself: the outside world stops at the adapter, your own thinking lives in the input and nowhere else, the pattern is where thinking becomes a decision, the rule is where a decision becomes a fully specified instruction, the robot is the thing you switch on, and the account is what owns the money and remembers what happened. Nothing above the input knows what your processor computed, and nothing below the rule knows why it was asked to trade — which is what lets you replace either end without disturbing the other.
-
-This is the map, not the manual: it shows no code on purpose. The reference manual gives each stage its complete surface on all three languages, and every directory below is a variation on the one assembly described here, from a moving-average crossover to a book-imbalance market maker.
-
-## What is in this repository
-
-Every example is a directory named `NN group - name`, holding `cpp/` and `python/`. The five groups are a progression:
-
-| Group | Examples | What it teaches |
-| --- | --- | --- |
-| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search, several contracts, several adapters, save and load, a trading loop |
-| `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
-| `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
-| `stats` | 22–23 | reading the statistics back, and selecting among candidates with a model |
-| `misc` | 24–29 | core affinity, currency, storage regimes, manual booking, bulk actions, the timeserie toolbox |
-
-Shared plumbing — loading a CSV, a rolling mean, the standard entry and exit rule parameters — lives in `helpers/`, so the body of each example contains only what that example is about. The data the examples read lives in `data/`.
-
-The examples are deliberately terse. They carry no self-checking, no assertions and no defensive code: each one prints the few numbers its run produced and leaves the judgement to you.
-
 ## The manual
 
 These examples are chapter 12 of the engine's reference manual, which describes the whole surface they use: the Input, the Pattern, the Rule, the Robot, the Account, the order book, the timeserie tools and the risk model. Ask your vendor contact for the current `reference.pdf`.
+
+## Licence
+
+The example source code — the numbered directories, `helpers/` and `CMakeLists.txt` — may be used, modified and redistributed for any purpose, with no conditions and no attribution required. The data files under `data/`, the diagram under `assets/` and this README are not covered by that grant; they are here so the examples can be read and run. The examples illustrate an interface: they are not investment advice, they are not fit as written for trading real money, and they come with no warranty and no liability of any kind. See `LICENSE`.

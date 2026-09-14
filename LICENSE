@@ -1,0 +1,43 @@
+Copyright (C) 2026 Andrey Solovyev
+
+WHAT THIS LICENCE COVERS
+
+This licence covers the example source code of this repository, and nothing
+else. That is: the contents of the numbered example directories, "01 hello
+world - initial params" through "29 misc - timeserie tools"; the shared helper
+sources under "helpers/"; and the build file "CMakeLists.txt". Those files are
+called the Examples below.
+
+GRANT
+
+Permission to use, copy, modify, merge, publish, distribute, sublicense and
+sell the Examples, in source or in binary form, for any purpose, commercial or
+non-commercial, with or without fee, is hereby granted without restriction and
+without any condition whatsoever. No attribution, notice, acknowledgement or
+retention of this licence is required.
+
+WHAT THIS LICENCE DOES NOT COVER
+
+Everything else in this repository is outside the grant above and is provided
+solely so that the Examples can be read and run: the market data files under
+"data/", the diagram under "assets/", and the README. The Trading Strategy
+Engine itself - its shared library, its headers and its language wrappers - is
+not part of this repository and is licensed separately, under its own end user
+licence agreement.
+
+NO WARRANTY
+
+THE EXAMPLES ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, ACCURACY AND NONINFRINGEMENT.
+
+NO LIABILITY
+
+THE EXAMPLES ILLUSTRATE AN INTERFACE. THEY ARE NOT INVESTMENT ADVICE, NOT A
+TRADING RECOMMENDATION, AND NOT FIT AS WRITTEN FOR TRADING REAL MONEY. IN NO
+EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE EXAMPLES OR THEIR USE, INCLUDING
+WITHOUT LIMITATION ANY TRADING LOSS, LOST PROFIT, LOSS OF DATA OR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY OR CONSEQUENTIAL DAMAGES, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
