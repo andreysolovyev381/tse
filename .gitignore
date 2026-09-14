@@ -1,0 +1,11 @@
+# Local build artifacts (not part of the shipped examples tree).
+build/
+__pycache__/
+*.pyc
+
+# Local SDK drop and virtualenv used to run the examples.
+sdk/
+tooling/.venv/
+
+# macOS
+.DS_Store
