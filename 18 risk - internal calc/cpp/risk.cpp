@@ -36,9 +36,9 @@ namespace {
 	void addRiskRules(tse::Account& account)
 	{
 		tse::RuleParams const flat {helpers::exitParams()};
-		account.addRuleRisk("StopLoss", tse::RuleType::stop_loss, flat, -0.10, "AAPL");
+		account.addRuleRisk("StopLoss", tse::RuleType::stop_loss, flat, 0.10, "AAPL");
 		account.addRuleRisk("TakeProfit", tse::RuleType::take_profit, flat, 0.20, "AAPL");
-		account.addRuleRisk("StopLossTrail", tse::RuleType::stop_loss_trailing, flat, -0.12, "AAPL");
+		account.addRuleRisk("StopLossTrail", tse::RuleType::stop_loss_trailing, flat, 0.12, "AAPL");
 		account.addRuleRisk("TakeProfitTrail", tse::RuleType::take_profit_trailing, flat, 0.25, "AAPL");
 	}
 

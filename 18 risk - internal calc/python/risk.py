@@ -33,9 +33,9 @@ def add_policies(account):
 # measures from the entry price, the trailing pair from the best price seen since entry.
 def add_risk_rules(account):
     flat = H.exit_params()
-    account.add_rule_risk("StopLoss", tse.RuleType.StopLoss, flat, -0.10, "AAPL")
+    account.add_rule_risk("StopLoss", tse.RuleType.StopLoss, flat, 0.10, "AAPL")
     account.add_rule_risk("TakeProfit", tse.RuleType.TakeProfit, flat, 0.20, "AAPL")
-    account.add_rule_risk("StopLossTrail", tse.RuleType.StopLossTrailing, flat, -0.12, "AAPL")
+    account.add_rule_risk("StopLossTrail", tse.RuleType.StopLossTrailing, flat, 0.12, "AAPL")
     account.add_rule_risk("TakeProfitTrail", tse.RuleType.TakeProfitTrailing, flat, 0.25, "AAPL")
 
 

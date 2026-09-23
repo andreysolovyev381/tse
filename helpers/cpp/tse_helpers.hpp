@@ -2,9 +2,9 @@
 
 #include "tse.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <ctime>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -116,13 +116,9 @@ namespace helpers {
 			if (std::sscanf(line.c_str(), "%d-%d-%d;%lf;%lf;%lf;%lf;%lf", &y, &mo, &d, &open, &high, &low, &close, &volume) != 8) {
 				continue;
 			}
-			std::tm tmv {};
-			tmv.tm_year = y - 1900;
-			tmv.tm_mon = mo - 1;
-			tmv.tm_mday = d;
-			std::time_t const secs {timegm(&tmv)};
+			std::chrono::sys_days const date {std::chrono::year {y} / std::chrono::month {static_cast<unsigned>(mo)} / std::chrono::day {static_cast<unsigned>(d)}};
 			tse::OhlcvTick tick;
-			tick.tsNanoseconds = static_cast<std::int64_t>(secs) * 1000000000LL;
+			tick.tsNanoseconds = std::chrono::nanoseconds {date.time_since_epoch()}.count();
 			tick.open = open;
 			tick.high = high;
 			tick.low = low;

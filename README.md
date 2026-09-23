@@ -30,6 +30,73 @@ Shared plumbing — loading a CSV, a rolling mean, the standard entry and exit r
 
 The examples are deliberately terse. They carry no self-checking, no assertions and no defensive code: each one prints the few numbers its run produced and leaves the judgement to you.
 
+## Building and running the examples
+
+The examples build and run against the SDK archive issued with your licence. Unpack it into `sdk/` at the root of this repository, so that the archive's `lib/`, `include/` and `python/` directories sit directly under `sdk/`, and install the licence as the archive's own `README.md` describes. An SDK unpacked anywhere else is found through `TSE_SDK_DIR`, set to the directory it was unpacked into. All commands below are run from the root of this repository.
+
+### Toolchains
+
+On Linux the examples build with `g++` in C++20 mode. On Windows they build with [llvm-mingw](https://github.com/mstorsjo/llvm-mingw), UCRT variant, release 20241203 or newer: the C++ wrapper in the SDK, `lib/libtse_export_cpp.a`, is compiled code built by that toolchain against libc++, so neither MSVC nor a MinGW `g++` built on libstdc++ can link it. CMake builds on Windows use the Ninja generator.
+
+### C++ with CMake
+
+On Linux:
+
+```sh
+cmake -S . -B build
+cmake --build build
+```
+
+On Windows, in PowerShell, with the `bin` directory of llvm-mingw and Ninja on `PATH`:
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+cmake --build build
+```
+
+Each example becomes one executable in `build/`, named after its source file — `build/macd`, `build/market_maker`, `build/timeserie_tools` and so on, with `.exe` on Windows — and `cmake --build build --target macd` builds a single one. Examples 08 and 23 use XGBoost, so for these two alone CMake downloads and builds XGBoost while it configures; `-DTSE_EXAMPLES_XGBOOST=OFF` skips the download and leaves those two examples out. XGBoost tests its own builds with gcc, clang and MSVC, not with MinGW; if it fails to build on Windows, that option leaves the other 27 examples unaffected.
+
+On Linux an executable finds the engine through the path it was linked with. Windows has no such path, so there `sdk\lib` goes on `PATH` before an example runs:
+
+```powershell
+$env:PATH = "$env:PATH;$PWD\sdk\lib"
+.\build\macd.exe
+```
+
+### C++ with a single compiler call on Linux
+
+One example can be built without CMake as well:
+
+```sh
+g++ -std=c++20 -O2 \
+    -I sdk/include -I sdk/include/tse -I helpers/cpp \
+    -DTSE_DATA_DIR="\"$PWD/data\"" \
+    "02 hello world - macd/cpp/macd.cpp" \
+    sdk/lib/libtse_export_cpp.a -L sdk/lib -ltse_export.5.0 \
+    -Wl,-rpath,"$PWD/sdk/lib" \
+    -o macd
+```
+
+`-I helpers/cpp` is required, because every example includes `tse_helpers.hpp`. `sdk/lib/libtse_export_cpp.a` is the C++ wrapper and `-ltse_export.5.0` is the engine itself; `5.0` is the version segment of `sdk/lib/libtse_export.5.0.so` and follows the SDK you have. `TSE_DATA_DIR` tells the example where the data files are; without it they are looked up in the current directory.
+
+### Python
+
+```sh
+python3 "02 hello world - macd/python/macd.py"
+```
+
+On Windows the interpreter is usually called `python`. The shared helpers import `tse.py` from `sdk/python` and load the engine from `sdk/lib`; nothing has to be installed into the Python environment for that. Examples 08 and 23 also need the `numpy` and `xgboost` packages: `python3 -m pip install numpy xgboost`.
+
+### Variables
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `TSE_SDK_DIR` | directory the SDK archive is unpacked into | `sdk/` in this repository |
+| `TSE_DATA_DIR` | directory holding the data files | `data/` in this repository |
+| `TSE_EXPORT_LIB` | Python only: the engine library to load instead of the one in `$TSE_SDK_DIR/lib` | unset |
+
+CMake reads `TSE_SDK_DIR` and `TSE_DATA_DIR` from the environment when it configures, and `TSE_SDK_DIR` can also be given as `-DTSE_SDK_DIR=...`. A C++ executable keeps the data directory it was built with.
+
 ## How a robot works
 
 The engine does not execute a program you write; it runs a graph you declare. Market data enters at an adapter, an input turns every tick into a number, a pattern decides when that number means something, a rule turns the decision into a fully specified order, a robot owns the rules and is the thing you start and stop, and an account owns the robots together with everything they touch. The sections below walk that chain once, stage by stage, and say what each stage is for and why it exists at all. They name the calls but show no code: the reference manual gives every stage its complete surface on all three languages.

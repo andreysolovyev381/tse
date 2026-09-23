@@ -3,21 +3,19 @@ import sys
 
 _HELPERS_DIR = os.path.dirname(os.path.abspath(__file__))
 EXAMPLES_ROOT = os.path.abspath(os.path.join(_HELPERS_DIR, "..", ".."))
-_ENGINE_ROOT = os.path.abspath(os.path.join(EXAMPLES_ROOT, "..", "..", ".."))
 
-SDK_PYTHON_DIR = os.environ.get(
-    "TSE_SDK_PYTHON",
-    os.path.join(_ENGINE_ROOT, "src", "library", "export", "python"),
-)
-LIB_PATH = os.environ.get(
-    "TSE_EXPORT_LIB",
-    os.path.join(_ENGINE_ROOT, "deployment", "dist", "libtse_export.dylib"),
-)
+SDK_DIR = os.environ.get("TSE_SDK_DIR", os.path.join(EXAMPLES_ROOT, "sdk"))
+SDK_PYTHON_DIR = os.path.join(SDK_DIR, "python")
 DATA_DIR = os.environ.get("TSE_DATA_DIR", os.path.join(EXAMPLES_ROOT, "data"))
 
 if SDK_PYTHON_DIR not in sys.path:
     sys.path.insert(0, SDK_PYTHON_DIR)
 import tse
+
+LIB_PATH = os.environ.get(
+    "TSE_EXPORT_LIB",
+    os.path.join(SDK_DIR, "lib", tse.default_lib_filename()),
+)
 
 
 def data_path(name):
