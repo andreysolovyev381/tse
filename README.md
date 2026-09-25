@@ -87,6 +87,29 @@ python3 "02 hello world - macd/python/macd.py"
 
 On Windows the interpreter is usually called `python`. The shared helpers import `tse.py` from `sdk/python` and load the engine from `sdk/lib`; nothing has to be installed into the Python environment for that. Examples 08 and 23 also need the `numpy` and `xgboost` packages: `python3 -m pip install numpy xgboost`.
 
+### Every example at once
+
+`run_examples.py`, at the root of this repository, does all of the above in one go: it builds the C++ examples with CMake as described in this section, then runs every example on both surfaces — in each directory the Python example first, the C++ example second — and prints one line per run together with a comparison of the two outputs. It needs Python 3 and the toolchain of the section above and nothing else; on Windows it configures CMake with Ninja and `clang++` and puts `sdk\lib` on `PATH` for the C++ runs by itself.
+
+```sh
+python3 run_examples.py
+```
+
+The command above builds and runs all twenty-nine examples; naming examples by their numbers limits the run to them:
+
+```sh
+python3 run_examples.py 02 10
+```
+
+| Option | Meaning | When omitted |
+| --- | --- | --- |
+| `--build-dir DIR` | the CMake build directory | `build/` in this repository |
+| `--jobs N` | parallel build jobs | CMake decides |
+| `--timeout SECONDS` | limit for a single run | no limit |
+| `--log-dir DIR` | keeps the output of every run, the build logs and the differences | only the summary is printed |
+
+A run is PASS when the example exits with status 0, FAIL otherwise, and TIMEOUT when it outlives `--timeout`. Examples 08 and 23 are SKIP when XGBoost cannot be used: on the C++ side when XGBoost fails to build, in which case the script reconfigures with `-DTSE_EXAMPLES_XGBOOST=OFF` and carries on with the other examples, and on the Python side when `numpy` or `xgboost` is not installed. The two outputs of an example are compared line by line once line endings are normalised; SAME or DIFF is reported and does not decide the outcome. The script exits with status 0 when no run failed and none timed out.
+
 ### Variables
 
 | Variable | Meaning | Default |
