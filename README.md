@@ -24,7 +24,7 @@ Every example is a directory named `NN group - name`, holding `cpp/` and `python
 | `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
 | `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
 | `stats` | 22–23 | reading the statistics back, and selecting among candidates with a model |
-| `misc` | 24–29 | core affinity, currency, storage regimes, manual booking, bulk actions, the timeserie toolbox |
+| `misc` | 24–29 | core affinity (being reworked), currency, storage regimes, manual booking, bulk actions, the timeserie toolbox |
 
 Shared plumbing — loading a CSV, a rolling mean, the standard entry and exit rule parameters — lives in `helpers/`, so the body of each example contains only what that example is about. The data the examples read lives in `data/`.
 
