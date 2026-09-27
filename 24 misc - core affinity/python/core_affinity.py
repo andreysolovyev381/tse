@@ -33,10 +33,11 @@ def main():
     rows = H.load_aapl()
 
     # The trailing number is the CPU core that piece of the strategy is nailed to; -1 leaves the choice to the operating system.
-    # A chain Input -> Pattern -> Rule -> Robot takes a thread of its own only once: here each pattern takes one, and the inputs, left at -1, run on the thread that pushes the data, so both averages reach a pattern bar by bar.
-    # The account may take a core besides, since every booking waits until the blotter thread has made it.
+    # A chain Input -> Pattern -> Rule -> Robot takes a thread of its own only once: here each input takes one, and the patterns, rules and robot, left at -1, run on the thread of whichever input has just updated them.
+    # The account's blotter takes a core of its own as well, since every booking waits until the blotter thread has made it.
+    # The pinned layout therefore needs a processor with at least four cores: cores 1 and 2 carry the inputs, core 3 the blotter.
     unpinned_layout = {"account": -1, "simulator": -1, "sma50": -1, "sma200": -1, "to_long": -1, "to_short": -1}
-    pinned_layout = {"account": 0, "simulator": -1, "sma50": -1, "sma200": -1, "to_long": 0, "to_short": 1}
+    pinned_layout = {"account": 3, "simulator": -1, "sma50": 1, "sma200": 2, "to_long": -1, "to_short": -1}
 
     # Affinity buys latency, never a different trade: the same data through both layouts must give the same profit and the same trade count.
     unpinned = run_aapl("AffinityUnpinned", unpinned_layout, rows)
