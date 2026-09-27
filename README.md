@@ -2,7 +2,7 @@
 
 The Trading Strategy Engine is a backtesting and trading engine: one shared library behind one narrow C ABI, with C++ and Python wrappers over it, which turns a stream of market data into orders and orders into a book of statistics. The engine is not in this repository.
 
-What is here is twenty-nine strategies written against it, each one twice — once in C++ and once in Python, the same strategy on both surfaces. They are the worked examples of the engine's reference manual, ordered as a course rather than as a catalogue, and they are what a robot looks like when it is written for this engine.
+What is here is thirty strategies written against it, each one twice — once in C++ and once in Python, the same strategy on both surfaces. They are the worked examples of the engine's reference manual, ordered as a course rather than as a catalogue, and they are what a robot looks like when it is written for this engine.
 
 ## The whole assembly at a glance
 
@@ -16,11 +16,11 @@ Every directory in this repository is a variation on that one assembly, from a m
 
 ## What is in this repository
 
-Every example is a directory named `NN group - name`, holding `cpp/` and `python/`. The five groups are a progression:
+Every example is a directory named `NN group - name`, holding `cpp/` and `python/`; a variation of example `NN` is named `NN.N group - name` and sits next to it. The five groups are a progression:
 
 | Group | Examples | What it teaches |
 | --- | --- | --- |
-| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search, several contracts, several adapters, save and load, a trading loop |
+| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search over one parameter and over a table of combinations, several contracts, several adapters, save and load, a trading loop |
 | `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
 | `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
 | `stats` | 22–23 | reading the statistics back, and selecting among candidates with a model |
@@ -54,7 +54,7 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 cmake --build build
 ```
 
-Each example becomes one executable in `build/`, named after its source file — `build/macd`, `build/market_maker`, `build/timeserie_tools` and so on, with `.exe` on Windows — and `cmake --build build --target macd` builds a single one. Examples 08 and 23 use XGBoost, so for these two alone CMake downloads and builds XGBoost while it configures; `-DTSE_EXAMPLES_XGBOOST=OFF` skips the download and leaves those two examples out. XGBoost tests its own builds with gcc, clang and MSVC, not with MinGW; if it fails to build on Windows, that option leaves the other 27 examples unaffected.
+Each example becomes one executable in `build/`, named after its source file — `build/macd`, `build/market_maker`, `build/timeserie_tools` and so on, with `.exe` on Windows — and `cmake --build build --target macd` builds a single one. Examples 08 and 23 use XGBoost, so for these two alone CMake downloads and builds XGBoost while it configures; `-DTSE_EXAMPLES_XGBOOST=OFF` skips the download and leaves those two examples out. XGBoost tests its own builds with gcc, clang and MSVC, not with MinGW; if it fails to build on Windows, that option leaves the other 28 examples unaffected.
 
 On Linux an executable finds the engine through the path it was linked with. Windows has no such path, so there `sdk\lib` goes on `PATH` before an example runs:
 
@@ -95,7 +95,7 @@ On Windows the interpreter is usually called `python`. The shared helpers import
 python3 run_examples.py
 ```
 
-The command above builds and runs all twenty-nine examples; naming examples by their numbers limits the run to them:
+The command above builds and runs all thirty examples; naming examples by their numbers limits the run to them:
 
 ```sh
 python3 run_examples.py 02 10

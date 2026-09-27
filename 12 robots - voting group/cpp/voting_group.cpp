@@ -9,7 +9,8 @@
 
 namespace {
 
-	std::string const contractSymbol {"WTI"};
+	std::vector<std::string> const contractSymbols {"WTI_VOTER_1", "WTI_VOTER_2", "WTI_VOTER_3", "WTI_GROUP"};
+	std::string const& groupContract {contractSymbols.back()};
 
 	tse::RuleParams closeParams(double quantity)
 	{
@@ -72,7 +73,7 @@ namespace {
 		std::vector<tse::Trade> const trades {account.getTrades(0, 0, std::string {})};
 		for (std::size_t i {seenTrades}; i != trades.size(); ++i) {
 			if (trades[i].robotLabel == voterLabel) { continue; }
-			executed.pushExecuted(trades[i].symbol, toRetained(trades[i]));
+			executed.pushExecuted(groupContract, toRetained(trades[i]));
 		}
 		seenTrades = trades.size();
 	}
@@ -100,30 +101,35 @@ int main()
 		prices {account.createMarket("WTI prices", tse::MdType::ohlcv)},
 		executed {account.createMarket("Group fills", tse::MdType::executed)};
 	tse::Execution const execution {account.createSimulator("Sim", helpers::simulatorConfig())};
-	account.addContract(contractSymbol, 1, tse::Instrument::future, tse::Underlying::commodity, tse::Venue::undefined, 100000);
-	account.addInputOhlcv
-	(
-		"WTI price", 1, tse::Duration::minutes,
+	for (std::string const& symbol : contractSymbols) {
+		account.addContract(symbol, 1, tse::Instrument::future, tse::Underlying::commodity, tse::Venue::undefined, 100000);
+	}
+	tse::InputProcessor const priceHeartbeat
+	{
 		[](tse::Storage const& storage, std::string const&, tse::OhlcvTick const& tick) -> bool
 		{
 			storage.push(tick.tsNanoseconds, tick.close);
 			return true;
-		},
-		prices, {contractSymbol}
-	);
+		}
+	};
 
 	// Every trader ignores the price and votes by a coin flip: the price feed is only the
 	// heartbeat that makes all three of them decide once per bar.
-	for (std::string const& trader : traderLabels) {
+	for (std::size_t i {0u}; i != traderLabels.size(); ++i) {
 		std::string const
+			&trader {traderLabels[i]},
+			&contract {contractSymbols[i]};
+		std::string const
+			priceInput {trader + " price"},
 			longPattern {trader + " goes long"},
 			flatPattern {trader + " goes flat"},
 			enterRule {trader + " enter"},
 			exitRule {trader + " exit"};
-		account.addPatternFormula(longPattern, tse::Duration::minutes, {"WTI price"}, coinFlip(generator, draw, voteChance));
-		account.addPatternFormula(flatPattern, tse::Duration::minutes, {"WTI price"}, coinFlip(generator, draw, voteChance));
-		account.addRuleMarket(enterRule, tse::RuleType::entry, helpers::entryParams(traderQuantity), longPattern, contractSymbol);
-		account.addRuleMarket(exitRule, tse::RuleType::exit, closeParams(traderQuantity), flatPattern, contractSymbol);
+		account.addInputOhlcv(priceInput, 1, tse::Duration::minutes, priceHeartbeat, prices, {contract});
+		account.addPatternFormula(longPattern, tse::Duration::minutes, {priceInput}, coinFlip(generator, draw, voteChance));
+		account.addPatternFormula(flatPattern, tse::Duration::minutes, {priceInput}, coinFlip(generator, draw, voteChance));
+		account.addRuleMarket(enterRule, tse::RuleType::entry, helpers::entryParams(traderQuantity), longPattern, contract);
+		account.addRuleMarket(exitRule, tse::RuleType::exit, closeParams(traderQuantity), flatPattern, contract);
 		account.addRobot(trader, {enterRule, exitRule});
 	}
 
@@ -145,13 +151,14 @@ int main()
 			storage.push(trade.tsNanoseconds, groupNet);
 			return true;
 		},
-		executed, {contractSymbol}
+		executed, {groupContract}
 	);
 	account.addPatternThreshold("Group is long", tse::Duration::minutes, {"Group net"}, tse::Cmp::gt, 0.0);
 	account.addPatternThreshold("Group is flat", tse::Duration::minutes, {"Group net"}, tse::Cmp::le, 0.0);
-	account.addRuleMarket("Voter enter", tse::RuleType::entry, helpers::entryParams(voterQuantity), "Group is long", contractSymbol);
-	account.addRuleMarket("Voter exit", tse::RuleType::exit, closeParams(voterQuantity), "Group is flat", contractSymbol);
+	account.addRuleMarket("Voter enter", tse::RuleType::entry, helpers::entryParams(voterQuantity), "Group is long", groupContract);
+	account.addRuleMarket("Voter exit", tse::RuleType::exit, closeParams(voterQuantity), "Group is flat", groupContract);
 	account.addRobot(voterLabel, {"Voter enter", "Voter exit"});
+	account.portfolioSubscribe(prices, groupContract);
 
 	for (std::string const& trader : traderLabels) {
 		account.start(trader);
@@ -160,7 +167,9 @@ int main()
 
 	std::size_t seenTrades {0};
 	for (tse::OhlcvTick const& tick : ticks) {
-		prices.pushOhlcv(contractSymbol, tick);
+		for (std::string const& symbol : contractSymbols) {
+			prices.pushOhlcv(symbol, tick);
+		}
 		if (static_cast<std::size_t>(execution.getCount()) != seenTrades) {
 			forwardGroupFills(account, executed, voterLabel, seenTrades);
 		}

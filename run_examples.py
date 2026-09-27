@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 WINDOWS = os.name == "nt"
-EXAMPLE_DIR = re.compile(r"^(\d\d) ")
+EXAMPLE_DIR = re.compile(r"^(\d\d(?:\.\d+)?) ")
 THIRD_PARTY = ("numpy", "xgboost")
 PIP_HINT = "pip install numpy xgboost"
 
@@ -34,7 +34,8 @@ class Log:
 
     def write(self, name, content):
         if self.directory is not None:
-            (self.directory / name).write_text(content, encoding="utf-8", errors="replace")
+            with open(self.directory / name, "w", encoding="utf-8", errors="replace", newline="") as handle:
+                handle.write(content)
 
     def where(self, name):
         if self.directory is None:
@@ -47,7 +48,7 @@ def parse_args():
         description="Build the C++ examples with CMake, then run every example in Python and in C++ "
                     "and compare the two outputs.")
     parser.add_argument("numbers", nargs="*", metavar="NN",
-                        help="two-digit numbers of the examples to run; every example when none is given")
+                        help="numbers of the examples to run, such as 02 or 03.1; every example when none is given")
     parser.add_argument("--build-dir",
                         help="CMake build directory; build/ at the root of this repository when omitted")
     parser.add_argument("--jobs", type=int,

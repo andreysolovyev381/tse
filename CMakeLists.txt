@@ -80,7 +80,7 @@ if(TSE_EXAMPLES_XGBOOST)
     endforeach()
 endif()
 
-file(GLOB TSE_EXAMPLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/[0-9][0-9] */cpp/*.cpp")
+file(GLOB TSE_EXAMPLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/[0-9][0-9]*/cpp/*.cpp")
 
 foreach(src IN LISTS TSE_EXAMPLE_SOURCES)
     get_filename_component(name "${src}" NAME_WE)

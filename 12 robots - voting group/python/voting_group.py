@@ -7,7 +7,8 @@ import tse_helpers as H
 
 tse = H.tse
 
-CONTRACT = "WTI"
+CONTRACTS = ["WTI_VOTER_1", "WTI_VOTER_2", "WTI_VOTER_3", "WTI_GROUP"]
+GROUP_CONTRACT = CONTRACTS[-1]
 
 
 def close_params(quantity):
@@ -66,25 +67,26 @@ def main():
     prices = account.create_market("WTI prices", tse.MdType.Ohlcv)
     executed = account.create_market("Group fills", tse.MdType.Executed)
     execution = account.create_simulator("Sim", H.simulator_options())
-    account.add_contract(CONTRACT, 1, tse.Instrument.Future, tse.Underlying.Commodity, tse.Venue.Undefined, 100000)
+    for symbol in CONTRACTS:
+        account.add_contract(symbol, 1, tse.Instrument.Future, tse.Underlying.Commodity, tse.Venue.Undefined, 100000)
 
     def price_heartbeat(storage, contract_id, tick):
         storage.push(tick.tsNanoseconds, tick.close)
         return True
 
-    account.add_input_ohlcv("WTI price", 1, tse.Duration.Minutes, price_heartbeat, prices, [CONTRACT])
-
     # Every trader ignores the price and votes by a coin flip: the price feed is only the
     # heartbeat that makes all three of them decide once per bar.
-    for trader in trader_labels:
+    for trader, contract in zip(trader_labels, CONTRACTS):
+        price_input = trader + " price"
         long_pattern = trader + " goes long"
         flat_pattern = trader + " goes flat"
         enter_rule = trader + " enter"
         exit_rule = trader + " exit"
-        account.add_pattern_formula(long_pattern, tse.Duration.Minutes, ["WTI price"], coin_flip(generator, vote_chance))
-        account.add_pattern_formula(flat_pattern, tse.Duration.Minutes, ["WTI price"], coin_flip(generator, vote_chance))
-        account.add_rule_market(enter_rule, tse.RuleType.Entry, H.entry_params(trader_quantity), long_pattern, CONTRACT)
-        account.add_rule_market(exit_rule, tse.RuleType.Exit, close_params(trader_quantity), flat_pattern, CONTRACT)
+        account.add_input_ohlcv(price_input, 1, tse.Duration.Minutes, price_heartbeat, prices, [contract])
+        account.add_pattern_formula(long_pattern, tse.Duration.Minutes, [price_input], coin_flip(generator, vote_chance))
+        account.add_pattern_formula(flat_pattern, tse.Duration.Minutes, [price_input], coin_flip(generator, vote_chance))
+        account.add_rule_market(enter_rule, tse.RuleType.Entry, H.entry_params(trader_quantity), long_pattern, contract)
+        account.add_rule_market(exit_rule, tse.RuleType.Exit, close_params(trader_quantity), flat_pattern, contract)
         account.add_robot(trader, [enter_rule, exit_rule])
 
     # The group is assembled right here: the three traders' fills are replayed into an
@@ -101,12 +103,13 @@ def main():
         storage.push(trade.tsNanoseconds, group["net"])
         return True
 
-    account.add_input_executed("Group net", 1, tse.Duration.Minutes, group_net, executed, [CONTRACT])
+    account.add_input_executed("Group net", 1, tse.Duration.Minutes, group_net, executed, [GROUP_CONTRACT])
     account.add_pattern_threshold("Group is long", tse.Duration.Minutes, ["Group net"], tse.Cmp.Gt, 0.0)
     account.add_pattern_threshold("Group is flat", tse.Duration.Minutes, ["Group net"], tse.Cmp.Le, 0.0)
-    account.add_rule_market("Voter enter", tse.RuleType.Entry, H.entry_params(voter_quantity), "Group is long", CONTRACT)
-    account.add_rule_market("Voter exit", tse.RuleType.Exit, close_params(voter_quantity), "Group is flat", CONTRACT)
+    account.add_rule_market("Voter enter", tse.RuleType.Entry, H.entry_params(voter_quantity), "Group is long", GROUP_CONTRACT)
+    account.add_rule_market("Voter exit", tse.RuleType.Exit, close_params(voter_quantity), "Group is flat", GROUP_CONTRACT)
     account.add_robot(voter_label, ["Voter enter", "Voter exit"])
+    account.portfolio_subscribe(prices, GROUP_CONTRACT)
 
     for trader in trader_labels:
         account.start(trader)
@@ -115,14 +118,15 @@ def main():
     seen_trades = 0
     voter_key = voter_label.encode()
     for tick in ticks:
-        prices.push_ohlcv_by_name(CONTRACT, tick)
+        for symbol in CONTRACTS:
+            prices.push_ohlcv_by_name(symbol, tick)
         if execution.get_count() == seen_trades:
             continue
         trades = account.get_trades(0, 0, None)
         for i in range(seen_trades, len(trades)):
             if trades[i].robotLabel == voter_key:
                 continue
-            executed.push_executed_by_name(trades[i].symbol.decode(), to_retained(trades[i]))
+            executed.push_executed_by_name(GROUP_CONTRACT, to_retained(trades[i]))
         seen_trades = len(trades)
 
     first = account.get_robot_summary(trader_labels[0])
