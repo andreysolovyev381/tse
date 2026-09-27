@@ -184,7 +184,7 @@ A robot is the execution node that closes the graph at the top, and the unit at 
 
 A robot is declared with `tse_add_robot`, which is handed the labels of the rules it is to own. Since a rule names its pattern and a pattern names its inputs, adding a robot transitively takes in a whole dependency component whose leaves are inputs. Wiring alone changes nothing: `tse_start` is what sets the component in motion, `tse_stop` and `tse_halt` bring it to rest, and the bulk actions `tse_cancel_all`, `tse_sale_all`, `tse_halt_and_cancel_all`, `tse_halt_and_sale_all` and `tse_halt_and_cancel_sale_all` combine halting with withdrawing resting orders and flattening positions.
 
-The robot is also the unit the licence counts. Starting one takes a seat keyed by the account and the robot label; stopping or halting it returns that seat. Which pool the seat comes from is declared per account with `tse_account_set_mode` — `tse_mode_backtest` or `tse_mode_live` — and the applied ceilings and observed peaks are readable at any time through `tse_protection_status`.
+The robot is also the unit the licence counts. Starting one takes a seat keyed by the account and the robot label; stopping or halting it returns that seat. There is a single pool of seats: a robot that backtests, a robot that trades live and a robot started by a grid search all count against the same purchased number of robots, and the applied ceiling, whether the licence is unlimited, and the observed peak are readable at any time through `tse_protection_status`.
 
 ### An Account owns the robots
 

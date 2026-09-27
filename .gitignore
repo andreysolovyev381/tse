@@ -1,3 +1,5 @@
+/24 misc - core affinity/
+
 # Local build artifacts (not part of the shipped examples tree).
 build/
 __pycache__/
