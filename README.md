@@ -23,7 +23,7 @@ Every example is a directory named `NN group - name`, holding `cpp/` and `python
 | `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search over one parameter and over a table of combinations, several contracts, several adapters, save and load, a trading loop |
 | `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
 | `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
-| `stats` | 22–23 | reading the statistics back, and selecting among candidates with a model |
+| `stats` | 22–23 | reading the statistics back, for one robot and for eight robots scored on every core, and selecting among candidates with a model, once more with the scores of one thread and of every core compared |
 | `misc` | 24–29 | core affinity (being reworked), currency, storage regimes, manual booking, bulk actions, the timeserie toolbox |
 
 Shared plumbing — loading a CSV, a rolling mean, the standard entry and exit rule parameters — lives in `helpers/`, so the body of each example contains only what that example is about. The data the examples read lives in `data/`.
@@ -54,7 +54,7 @@ cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
 cmake --build build
 ```
 
-Each example becomes one executable in `build/`, named after its source file — `build/macd`, `build/market_maker`, `build/timeserie_tools` and so on, with `.exe` on Windows — and `cmake --build build --target macd` builds a single one. Examples 08 and 23 use XGBoost, so for these two alone CMake downloads and builds XGBoost while it configures; `-DTSE_EXAMPLES_XGBOOST=OFF` skips the download and leaves those two examples out. XGBoost tests its own builds with gcc, clang and MSVC, not with MinGW; if it fails to build on Windows, that option leaves the other 28 examples unaffected.
+Each example becomes one executable in `build/`, named after its source file — `build/macd`, `build/market_maker`, `build/timeserie_tools` and so on, with `.exe` on Windows — and `cmake --build build --target macd` builds a single one. Examples 08, 23 and 23.1 use XGBoost, so for these three alone CMake downloads and builds XGBoost while it configures; `-DTSE_EXAMPLES_XGBOOST=OFF` skips the download and leaves those three examples out. XGBoost tests its own builds with gcc, clang and MSVC, not with MinGW; if it fails to build on Windows, that option leaves the other 28 examples unaffected.
 
 On Linux an executable finds the engine through the path it was linked with. Windows has no such path, so there `sdk\lib` goes on `PATH` before an example runs:
 
@@ -85,7 +85,7 @@ g++ -std=c++20 -O2 \
 python3 "02 hello world - macd/python/macd.py"
 ```
 
-On Windows the interpreter is usually called `python`. The shared helpers import `tse.py` from `sdk/python` and load the engine from `sdk/lib`; nothing has to be installed into the Python environment for that. Examples 08 and 23 also need the `numpy` and `xgboost` packages: `python3 -m pip install numpy xgboost`.
+On Windows the interpreter is usually called `python`. The shared helpers import `tse.py` from `sdk/python` and load the engine from `sdk/lib`; nothing has to be installed into the Python environment for that. Examples 08, 23 and 23.1 also need the `numpy` and `xgboost` packages: `python3 -m pip install numpy xgboost`.
 
 ### Every example at once
 
@@ -108,7 +108,7 @@ python3 run_examples.py 02 10
 | `--timeout SECONDS` | limit for a single run | no limit |
 | `--log-dir DIR` | keeps the output of every run, the build logs and the differences | only the summary is printed |
 
-A run is PASS when the example exits with status 0, FAIL otherwise, and TIMEOUT when it outlives `--timeout`. Examples 08 and 23 are SKIP when XGBoost cannot be used: on the C++ side when XGBoost fails to build, in which case the script reconfigures with `-DTSE_EXAMPLES_XGBOOST=OFF` and carries on with the other examples, and on the Python side when `numpy` or `xgboost` is not installed. The two outputs of an example are compared line by line once line endings are normalised; SAME or DIFF is reported and does not decide the outcome. The script exits with status 0 when no run failed and none timed out.
+A run is PASS when the example exits with status 0, FAIL otherwise, and TIMEOUT when it outlives `--timeout`. Examples 08, 23 and 23.1 are SKIP when XGBoost cannot be used: on the C++ side when XGBoost fails to build, in which case the script reconfigures with `-DTSE_EXAMPLES_XGBOOST=OFF` and carries on with the other examples, and on the Python side when `numpy` or `xgboost` is not installed. The two outputs of an example are compared line by line once line endings are normalised; SAME or DIFF is reported and does not decide the outcome. The script exits with status 0 when no run failed and none timed out.
 
 ### Variables
 
@@ -213,7 +213,7 @@ Fills return along the same chain in the opposite direction. Each one moves the 
 
 Each fill is also journaled by the blotter as a retained trade. `tse_get_trades` reads them back as `TseTrade` records, filtered by time range and optionally by robot. A retained trade is deliberately wide: besides price, quantity, fee and booked P&L it carries both order identifiers, the rule and robot labels that produced it, and the contract and portfolio exposure captured at the moment of the trade — which is what makes the journal joinable against whatever your own processor logged.
 
-Aggregates come from the same store. `tse_get_summary` folds the whole account into a `TseSummary`; `tse_get_robot_summary` and `tse_get_summaries` do the same per robot. Beyond the summary lies the ex-post layer, which buckets each robot's trades over a time step and scores them: `tse_ex_post_save` writes the two-table SQLite database, while `tse_ex_post_create` keeps a live object whose feature matrices are read through `tse_ex_post_feature_momentum`, `tse_ex_post_feature_ewma` and `tse_ex_post_feature_level_crossings` — the projections a model uses to choose among strategy candidates. Trades executed outside the engine can be folded into the same picture with `tse_book_trade` and `tse_book_trade_with_exposure`.
+Aggregates come from the same store. `tse_get_summary` folds the whole account into a `TseSummary`; `tse_get_robot_summary` and `tse_get_summaries` do the same per robot. Beyond the summary lies the ex-post layer, which buckets each robot's trades over a time step and scores them: `tse_ex_post_create` builds a live object on as many threads as it is given, its feature matrices are read through `tse_ex_post_feature_momentum`, `tse_ex_post_feature_ewma` and `tse_ex_post_feature_level_crossings` — the projections a model uses to choose among strategy candidates — and `tse_ex_post_save` writes what the object holds into an SQLite database without scoring again. Trades executed outside the engine can be folded into the same picture with `tse_book_trade` and `tse_book_trade_with_exposure`.
 
 ## The manual
 

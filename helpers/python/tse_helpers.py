@@ -30,6 +30,10 @@ def cleanup(db_path):
             pass
 
 
+def hardware_threads():
+    return os.cpu_count() or 1
+
+
 def account(label, regime, log):
     acc = tse.Account(label, regime, lib_path=LIB_PATH)
     acc.set_log_level(log)

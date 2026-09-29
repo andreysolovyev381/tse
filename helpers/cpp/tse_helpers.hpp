@@ -2,6 +2,7 @@
 
 #include "tse.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -9,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifndef TSE_DATA_DIR
@@ -27,6 +29,11 @@ namespace helpers {
 		std::remove(dbPath.c_str());
 		std::remove((dbPath + "-wal").c_str());
 		std::remove((dbPath + "-shm").c_str());
+	}
+
+	inline std::uint32_t hardwareThreads()
+	{
+		return std::max(1u, std::thread::hardware_concurrency());
 	}
 
 	inline tse::SimulatorConfig simulatorConfig()

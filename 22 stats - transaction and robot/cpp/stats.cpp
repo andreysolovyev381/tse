@@ -65,14 +65,14 @@ int main()
 
 	// The second kind: ex_post cuts the very same run into day buckets and scores each bucket, so a
 	// model can study how the robot behaved through time instead of one number at the end.
-	tse::ExPost const exPost {account.createExPost(tse::Duration::days, -1, 5)};
+	tse::ExPost const exPost {account.createExPost(tse::Duration::days, -1, 5, helpers::hardwareThreads())};
 	std::size_t const
 	paramCount {tse::ExPost::paramCount()},
 	buckets {exPost.bucketCount(0)};
 
 	std::filesystem::path const dbPath {std::filesystem::temp_directory_path() / "tse_ex06_cpp.sqlite3.db"};
 	helpers::cleanup(dbPath.string());
-	account.exPostSave(dbPath.string(), tse::Duration::days, -1, 5);
+	exPost.save(dbPath.string());
 	std::size_t const savedRobots {account.exPostLoad(dbPath.string())};
 	helpers::cleanup(dbPath.string());
 

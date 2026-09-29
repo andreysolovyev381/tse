@@ -32,8 +32,8 @@ endif()
 
 set(TSE_HELPERS "${CMAKE_CURRENT_SOURCE_DIR}/helpers/cpp")
 
-option(TSE_EXAMPLES_XGBOOST "Fetch XGBoost and build the two examples that use it" ON)
-set(TSE_XGBOOST_EXAMPLES gbm candidate_selection)
+option(TSE_EXAMPLES_XGBOOST "Fetch XGBoost and build the three examples that use it" ON)
+set(TSE_XGBOOST_EXAMPLES gbm candidate_selection candidate_selection_threads)
 
 if(TSE_EXAMPLES_XGBOOST)
     include(FetchContent)

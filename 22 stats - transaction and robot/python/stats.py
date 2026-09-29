@@ -49,13 +49,13 @@ def main():
 
     # The second kind: ex_post cuts the very same run into day buckets and scores each bucket, so a
     # model can study how the robot behaved through time instead of one number at the end.
-    ex_post = account.create_ex_post(tse.Duration.Days, -1, 5)
+    ex_post = account.create_ex_post(tse.Duration.Days, -1, 5, H.hardware_threads())
     param_count = ex_post.param_count()
     buckets = ex_post.bucket_count(0)
 
     db_path = os.path.join(tempfile.gettempdir(), "tse_ex06_py.sqlite3.db")
     H.cleanup(db_path)
-    account.ex_post_save(db_path, tse.Duration.Days, -1, 5)
+    ex_post.save(db_path)
     saved_robots = account.ex_post_load(db_path)
     H.cleanup(db_path)
 
