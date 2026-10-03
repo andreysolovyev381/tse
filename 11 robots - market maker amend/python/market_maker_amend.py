@@ -86,14 +86,14 @@ def main():
 
     # One quote lives at a time and the maker knows it by its client order id: a cancel drops
     # the id, a replace mints a fresh one, a modify keeps it. Zero means nothing rests.
-    def quote_is_gone(input_label, ts_nanoseconds, value):
+    def quote_is_gone(input_label, ts_nanoseconds, value, order):
         if quote["resting_client_order_id"] != 0:
             return False
         quote["resting_client_order_id"] = quote["next_client_order_id"]
         quote["next_client_order_id"] += 1
         return True
 
-    def sweep_hit(input_label, ts_nanoseconds, value):
+    def sweep_hit(input_label, ts_nanoseconds, value, order):
         if (
             not flow["sweep_fired"]
             or flow["hit_side"] != QUOTE_SIDE
@@ -104,7 +104,7 @@ def main():
         quote["cancel_count"] += 1
         return True
 
-    def same_side_run(input_label, ts_nanoseconds, value):
+    def same_side_run(input_label, ts_nanoseconds, value, order):
         if not flow["run_fired"] or quote["resting_client_order_id"] == 0:
             return False
         quote["resting_client_order_id"] = quote["next_client_order_id"]
@@ -112,13 +112,13 @@ def main():
         quote["replace_count"] += 1
         return True
 
-    def quiet_gap(input_label, ts_nanoseconds, value):
+    def quiet_gap(input_label, ts_nanoseconds, value, order):
         if not flow["gap_fired"] or quote["resting_client_order_id"] == 0:
             return False
         quote["modify_count"] += 1
         return True
 
-    def inventory_full(input_label, ts_nanoseconds, value):
+    def inventory_full(input_label, ts_nanoseconds, value, order):
         state = account.get_position_state(SYMBOL)
         return state.side == int(tse.Side.Long) and state.quantity >= inventory_cap
 

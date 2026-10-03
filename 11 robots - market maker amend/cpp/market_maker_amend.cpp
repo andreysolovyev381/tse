@@ -146,7 +146,7 @@ int main()
 	account.addPatternFormula
 	(
 		"QuoteIsGone", tse::Duration::nanoseconds, {"ClientFlow"},
-		[&quote](std::string const&, std::int64_t, double) -> bool
+		[&quote](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			if (quote.restingClientOrderId != 0u) { return false; }
 			quote.restingClientOrderId = quote.nextClientOrderId++;
@@ -156,7 +156,7 @@ int main()
 	account.addPatternFormula
 	(
 		"SweepHit", tse::Duration::nanoseconds, {"ClientFlow"},
-		[&flow, &quote](std::string const&, std::int64_t, double) -> bool
+		[&flow, &quote](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			if (not flow.sweepFired or flow.hitSide != quoteSide or quote.restingClientOrderId == 0u) { return false; }
 			quote.restingClientOrderId = 0u;
@@ -167,7 +167,7 @@ int main()
 	account.addPatternFormula
 	(
 		"SameSideRun", tse::Duration::nanoseconds, {"ClientFlow"},
-		[&flow, &quote](std::string const&, std::int64_t, double) -> bool
+		[&flow, &quote](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			if (not flow.runFired or quote.restingClientOrderId == 0u) { return false; }
 			quote.restingClientOrderId = quote.nextClientOrderId++;
@@ -178,7 +178,7 @@ int main()
 	account.addPatternFormula
 	(
 		"QuietGap", tse::Duration::nanoseconds, {"ClientFlow"},
-		[&flow, &quote](std::string const&, std::int64_t, double) -> bool
+		[&flow, &quote](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			if (not flow.gapFired or quote.restingClientOrderId == 0u) { return false; }
 			++quote.modifyCount;
@@ -188,7 +188,7 @@ int main()
 	account.addPatternFormula
 	(
 		"InventoryFull", tse::Duration::nanoseconds, {"ClientFlow"},
-		[&account, inventoryCap](std::string const&, std::int64_t, double) -> bool
+		[&account, inventoryCap](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			tse::PositionState const state {account.getPositionState(symbol)};
 			return state.side == tse::Side::long_ and state.quantity >= inventoryCap;

@@ -1,5 +1,6 @@
 #include "tse_helpers.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -10,124 +11,129 @@ namespace {
 	double const brokerFee {0.5};
 	std::int64_t const brokerLatencyNanoseconds {1000000LL};
 
-	struct BrokerState final {
-		double       marketPrice;
-		std::int64_t marketTsNanoseconds;
+	// The broker is one of the two ends this example replaces. It keeps the last price it was told about and
+	// fills in full whatever the robot sends it, a millisecond later, at that price - charging its fee.
+	struct Broker final {
+		double       lastPrice;
+		std::int64_t lastTsNanoseconds;
 		std::size_t  orderCount;
 		std::size_t  fillCount;
 	};
 
-	void reportFill
-	(
-		BrokerState& state,
-		tse::Execution const& execution,
-		tse::Order const& order,
-		double const quantity,
-		std::int64_t const delayNanoseconds
-	)
-	{
-		execution.applyFill(order.clientOrderId, state.marketPrice, quantity, brokerFee, state.marketTsNanoseconds + delayNanoseconds);
-		++state.fillCount;
-	}
-
 	void transmit
 	(
-		BrokerState& state,
+		Broker& broker,
 		tse::Execution const& execution,
 		tse::Order const& order
 	)
 	{
-		++state.orderCount;
+		++broker.orderCount;
 		if (order.quantity <= 0.0) {
 			return;
 		}
-		// a real broker rarely fills a whole order at once, so here every second order comes back as two trades
-		if (state.orderCount % 2u == 0u) {
-			double const half {order.quantity / 2.0};
-			reportFill(state, execution, order, half, brokerLatencyNanoseconds);
-			reportFill(state, execution, order, order.quantity - half, 2 * brokerLatencyNanoseconds);
-		}
-		else {
-			reportFill(state, execution, order, order.quantity, brokerLatencyNanoseconds);
-		}
+		execution.applyFill
+		(
+			order.clientOrderId,
+			broker.lastPrice,
+			order.quantity,
+			brokerFee,
+			broker.lastTsNanoseconds + brokerLatencyNanoseconds
+		);
+		++broker.fillCount;
 	}
+
+	// The client is the other such end. Live work has no file to walk over: it has a subscription that hands
+	// over one bar at a time, and the same bar tells the broker where the market is. The recorded bars of
+	// example 02 stand here for that subscription.
+	struct MarketDataClient final {
+
+		tse::Market const& market;
+		std::string const  symbol;
+		Broker&            broker;
+
+		std::size_t replay(std::vector<tse::OhlcvTick> const& subscription) const &
+		{
+			for (tse::OhlcvTick const& bar : subscription) {
+				broker.lastPrice = bar.close;
+				broker.lastTsNanoseconds = bar.tsNanoseconds;
+				market.pushOhlcv(symbol, bar);
+			}
+			return subscription.size();
+		}
+	};
 
 }
 
 int main()
 {
-	tse::setLogLevel(tse::LogLevel::none);
-	std::vector<tse::TradeTick> const ticks {helpers::loadTrades("wti_trades.csv", tse::Side::neutral)};
-	BrokerState state {0.0, 0, 0u, 0u};
+	std::vector<tse::OhlcvTick> const rows {helpers::loadAapl()};
+	Broker broker {0.0, 0, 0u, 0u};
 
-	tse::Account account {"GoLiveExample", tse::StorageRegime::mem};
-	tse::Market const realMarketData {account.createMarket("REAL_MARKET_DATA", tse::MdType::trade)};
-	// going live means the broker, not the engine, decides how an order fills
+	tse::Account account {"AAPL", tse::StorageRegime::mem};
+	tse::setLogLevel(tse::LogLevel::none);
+	tse::Market const market {account.createMarket("MD", tse::MdType::ohlcv)};
+	// Example 02 runs this very strategy against the built-in Simulator. Going live means the broker, not the
+	// engine, decides how an order fills, so the Simulator gives way to a custom execution - and that is the
+	// only change on this end.
 	tse::Execution const brokerExecution
 	{
 		account.createCustom
 		(
-			"BROKER_EXECUTION",
-			[&state](tse::Execution const& execution, tse::Order const& order)
+			"BROKER",
+			[&broker](tse::Execution const& execution, tse::Order const& order)
 			{
-				transmit(state, execution, order);
+				transmit(broker, execution, order);
 			},
 			8, -1
 		)
 	};
+	account.addContract("AAPL", 1, tse::Instrument::equity, tse::Underlying::undefined, tse::Venue::undefined, 100000);
 
-	account.addContract("WTI", 1, tse::Instrument::future, tse::Underlying::commodity, tse::Venue::undefined, 100000);
-	account.addInputTrade
-	(
-		"Flow", 4, tse::Duration::nanoseconds,
-		[](tse::Storage const& storage, std::string const&, tse::TradeTick const& tick) -> bool
+	// MACD is the distance between a fast and a slow average of the close: it is positive while the recent
+	// days are stronger than the older ones, and negative when they fade. The averages are meaningless until
+	// the slow one has seen enough days, so the indicator declares itself ready only then and no rule fires before that.
+	int const
+		fast {12},
+		slow {26};
+	tse::InputProcessor const macd
+	{
+		[alphaFast {2.0 / (fast + 1)}, alphaSlow {2.0 / (slow + 1)}, slow, emaFast {0.0}, emaSlow {0.0}, seeded {false}]
+		(tse::Storage const& storage, std::string const&, tse::OhlcvTick const& tick) mutable -> bool
 		{
-			if (tick.volume <= 0.0) {
-				return false;
-			}
-			storage.push(tick.tsNanoseconds, tick.volume);
-			return true;
-		},
-		realMarketData, {"WTI"}
-	);
-	// no edge here: any trade that carries volume is a buy signal, and the order size is that same volume
-	account.addPatternFormula
-	(
-		"EnterSignal", tse::Duration::nanoseconds, {"Flow"},
-		[](std::string const&, std::int64_t, double value) -> bool
-		{
-			return value > 0.0;
+			emaFast = seeded ? emaFast + alphaFast * (tick.close - emaFast) : tick.close;
+			emaSlow = seeded ? emaSlow + alphaSlow * (tick.close - emaSlow) : tick.close;
+			seeded = true;
+			storage.push(tick.tsNanoseconds, emaFast - emaSlow);
+			return storage.size() >= static_cast<std::size_t>(slow);
 		}
-	);
-	account.addRuleMarket
-	(
-		"Enter", tse::RuleType::entry,
-		tse::RuleParams
-		{
-			tse::QuantityMode::from_signal, 0.0,
-			tse::PriceType::market, 0.0, 0.0, 0.0,
-			tse::Side::long_, tse::Side::neutral, tse::Tif::day, 10
-		},
-		"EnterSignal", "WTI"
-	);
-	account.addRobot("GoLive", {"Enter"});
-	account.portfolioSubscribe(realMarketData, "WTI");
-	account.start("GoLive");
+	};
+	account.addInputOhlcv("MACD", slow, tse::Duration::days, macd, market, {"AAPL"});
+	// Buy 100 shares once the momentum turns positive and sell the whole position when it turns negative.
+	account.addPatternThreshold("ToLong", tse::Duration::days, {"MACD"}, tse::Cmp::ge, 0.0);
+	account.addPatternThreshold("ToShort", tse::Duration::days, {"MACD"}, tse::Cmp::lt, 0.0);
+	account.addRuleMarket("Entry", tse::RuleType::entry, helpers::entryParams(100.0), "ToLong", "AAPL");
+	account.addRuleMarket("Exit", tse::RuleType::exit, helpers::exitParams(), "ToShort", "AAPL");
+	account.addRobot("Strat", {"Entry", "Exit"});
+	account.start("Strat");
+	// A custom execution is started and stopped by whoever created it; the engine never does it for you.
+	brokerExecution.start();
 
-	for (tse::TradeTick const& tick : ticks) {
-		state.marketPrice = tick.price;
-		state.marketTsNanoseconds = tick.tsNanoseconds;
-		realMarketData.pushTrade("WTI", tick);
-	}
+	MarketDataClient const client {market, "AAPL", broker};
+	std::size_t const bars {client.replay(rows)};
 
-	tse::PositionState const position {account.getPositionState("WTI")};
+	brokerExecution.stop();
+
+	tse::Summary const summary {account.getSummary()};
+	tse::PositionState const position {account.getPositionState("AAPL")};
 	std::printf
 	(
-		"go live: replayed=%zu orders=%zu fills=%zu executed=%d finalQuantity=%.1f\n",
-		ticks.size(),
-		state.orderCount,
-		state.fillCount,
+		"go live: bars=%zu orders=%zu fills=%zu executed=%d netProfit=%.4f trades=%lld finalQuantity=%.1f\n",
+		bars,
+		broker.orderCount,
+		broker.fillCount,
 		brokerExecution.getCount(),
+		summary.totalNetProfit,
+		static_cast<long long>(summary.totalNumberOfTrades),
 		position.quantity
 	);
 	return 0;

@@ -159,7 +159,7 @@ namespace {
 	tse::FormulaProcessor spreadFormula(int mode)
 	{
 		std::shared_ptr<SpreadState> state {new SpreadState {0.0, 0.0, false, false}};
-		return [state, mode](std::string const& inputLabel, std::int64_t, double value) -> bool
+		return [state, mode](std::string const& inputLabel, std::int64_t, double value, tse::SignalOrder&) -> bool
 		{
 			if (inputLabel == "ImbA") {
 				state->lastA = value;

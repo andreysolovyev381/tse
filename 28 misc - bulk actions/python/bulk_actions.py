@@ -35,7 +35,7 @@ def exit_signal_processor(storage, contract_id, message):
     return True
 
 
-def always_fire(input_label, ts_nanoseconds, value):
+def always_fire(input_label, ts_nanoseconds, value, order):
     return True
 
 

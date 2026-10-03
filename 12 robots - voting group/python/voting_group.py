@@ -20,7 +20,7 @@ def close_params(quantity):
 
 
 def coin_flip(generator, chance):
-    def vote(input_label, ts_nanoseconds, value):
+    def vote(input_label, ts_nanoseconds, value, order):
         return generator.random() < chance
 
     return vote

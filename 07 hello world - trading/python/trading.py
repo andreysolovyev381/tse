@@ -10,69 +10,96 @@ BROKER_FEE = 0.5
 BROKER_LATENCY_NANOSECONDS = 1000000
 
 
-def flow(storage, contract_id, tick):
-    if tick.volume <= 0.0:
-        return False
-    storage.push(tick.tsNanoseconds, tick.volume)
-    return True
+# The broker is one of the two ends this example replaces. It keeps the last price it was told about and
+# fills in full whatever the robot sends it, a millisecond later, at that price - charging its fee.
+class Broker:
+    def __init__(self):
+        self.last_price = 0.0
+        self.last_ts_nanoseconds = 0
+        self.order_count = 0
+        self.fill_count = 0
+
+    def transmit(self, execution, order):
+        self.order_count += 1
+        if order.quantity <= 0.0:
+            return
+        execution.apply_fill(
+            order.clientOrderId.decode(),
+            self.last_price,
+            order.quantity,
+            BROKER_FEE,
+            self.last_ts_nanoseconds + BROKER_LATENCY_NANOSECONDS,
+        )
+        self.fill_count += 1
 
 
-def enter_signal(input_label, ts_nanoseconds, value):
-    return value > 0.0
+# The client is the other such end. Live work has no file to walk over: it has a subscription that hands
+# over one bar at a time, and the same bar tells the broker where the market is. The recorded bars of
+# example 02 stand here for that subscription.
+class MarketDataClient:
+    def __init__(self, market, symbol, broker):
+        self.market = market
+        self.symbol = symbol
+        self.broker = broker
+
+    def replay(self, subscription):
+        for bar in subscription:
+            self.broker.last_price = bar.close
+            self.broker.last_ts_nanoseconds = bar.tsNanoseconds
+            self.market.push_ohlcv_by_name(self.symbol, bar)
+        return len(subscription)
 
 
 def main():
-    ticks = H.load_trades("wti_trades.csv", tse.Side.Neutral)
-    state = {"market_price": 0.0, "market_ts_nanoseconds": 0, "order_count": 0, "fill_count": 0}
+    rows = H.load_aapl()
+    broker = Broker()
 
-    def report_fill(execution, order, quantity, delay_nanoseconds):
-        execution.apply_fill(order.clientOrderId.decode(), state["market_price"], quantity, BROKER_FEE, state["market_ts_nanoseconds"] + delay_nanoseconds)
-        state["fill_count"] += 1
+    account = tse.Account("AAPL", tse.StorageRegime.Mem, lib_path=H.LIB_PATH)
+    account.set_log_level(tse.LogLevel.Off)
+    market = account.create_market("MD", tse.MdType.Ohlcv)
+    # Example 02 runs this very strategy against the built-in Simulator. Going live means the broker, not the
+    # engine, decides how an order fills, so the Simulator gives way to a custom execution - and that is the
+    # only change on this end.
+    broker_execution = account.create_custom("BROKER", broker.transmit, 8, -1)
+    account.add_contract("AAPL", 1, tse.Instrument.Equity, tse.Underlying.Undefined, tse.Venue.Undefined, 100000)
 
-    def transmit(execution, order):
-        state["order_count"] += 1
-        if order.quantity <= 0.0:
-            return
-        # a real broker rarely fills a whole order at once, so here every second order comes back as two trades
-        if state["order_count"] % 2 == 0:
-            half = order.quantity / 2.0
-            report_fill(execution, order, half, BROKER_LATENCY_NANOSECONDS)
-            report_fill(execution, order, order.quantity - half, 2 * BROKER_LATENCY_NANOSECONDS)
-        else:
-            report_fill(execution, order, order.quantity, BROKER_LATENCY_NANOSECONDS)
+    # MACD is the distance between a fast and a slow average of the close: it is positive while the recent
+    # days are stronger than the older ones, and negative when they fade. The averages are meaningless until
+    # the slow one has seen enough days, so the indicator declares itself ready only then and no rule fires before that.
+    fast, slow = 12, 26
+    alpha_fast, alpha_slow = 2.0 / (fast + 1), 2.0 / (slow + 1)
+    ema = {"fast": None, "slow": None}
 
-    account = H.account("GoLiveExample", tse.StorageRegime.Mem, tse.LogLevel.Off)
-    real_market_data = account.create_market("REAL_MARKET_DATA", tse.MdType.Trade)
-    # going live means the broker, not the engine, decides how an order fills
-    broker_execution = account.create_custom("BROKER_EXECUTION", transmit, 8, -1)
+    def macd(storage, contract_id, tick):
+        ema["fast"] = tick.close if ema["fast"] is None else ema["fast"] + alpha_fast * (tick.close - ema["fast"])
+        ema["slow"] = tick.close if ema["slow"] is None else ema["slow"] + alpha_slow * (tick.close - ema["slow"])
+        storage.push(tick.tsNanoseconds, ema["fast"] - ema["slow"])
+        return storage.size() >= slow
 
-    account.add_contract("WTI", 1, tse.Instrument.Future, tse.Underlying.Commodity, tse.Venue.Undefined, 100000)
-    account.add_input_trade("Flow", 4, tse.Duration.Nanoseconds, flow, real_market_data, ["WTI"])
-    # no edge here: any trade that carries volume is a buy signal, and the order size is that same volume
-    account.add_pattern_formula("EnterSignal", tse.Duration.Nanoseconds, ["Flow"], enter_signal)
-    account.add_rule_market(
-        "Enter", tse.RuleType.Entry,
-        tse.make_rule_params(
-            tse.Quantity.FromSignal, 0.0,
-            tse.Price.Market, 0.0, 0.0, 0.0,
-            tse.Side.Long, tse.Side.Neutral, tse.Tif.Day, 10,
-        ),
-        "EnterSignal", "WTI")
-    account.add_robot("GoLive", ["Enter"])
-    account.portfolio_subscribe(real_market_data, "WTI")
-    account.start("GoLive")
+    account.add_input_ohlcv("MACD", slow, tse.Duration.Days, macd, market, ["AAPL"])
+    # Buy 100 shares once the momentum turns positive and sell the whole position when it turns negative.
+    account.add_pattern_threshold("ToLong", tse.Duration.Days, ["MACD"], tse.Cmp.Ge, 0.0)
+    account.add_pattern_threshold("ToShort", tse.Duration.Days, ["MACD"], tse.Cmp.Lt, 0.0)
+    account.add_rule_market("Entry", tse.RuleType.Entry, H.entry_params(100.0), "ToLong", "AAPL")
+    account.add_rule_market("Exit", tse.RuleType.Exit, H.exit_params(), "ToShort", "AAPL")
+    account.add_robot("Strat", ["Entry", "Exit"])
+    account.start("Strat")
+    # A custom execution is started and stopped by whoever created it; the engine never does it for you.
+    broker_execution.start()
 
-    for tick in ticks:
-        state["market_price"] = tick.price
-        state["market_ts_nanoseconds"] = tick.tsNanoseconds
-        real_market_data.push_trade_by_name("WTI", tick)
+    client = MarketDataClient(market, "AAPL", broker)
+    bars = client.replay(rows)
 
+    broker_execution.stop()
+
+    summary = account.get_summary()
     executed = broker_execution.get_count()
-    final_quantity = account.get_position_state("WTI").quantity
+    final_quantity = account.get_position_state("AAPL").quantity
     account.close()
 
-    print("go live: replayed={} orders={} fills={} executed={} finalQuantity={:.1f}".format(
-        len(ticks), state["order_count"], state["fill_count"], executed, final_quantity))
+    print("go live: bars={} orders={} fills={} executed={} netProfit={:.4f} trades={} finalQuantity={:.1f}".format(
+        bars, broker.order_count, broker.fill_count, executed,
+        summary.totalNetProfit, summary.totalNumberOfTrades, final_quantity))
     return 0
 
 

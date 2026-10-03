@@ -104,7 +104,7 @@ def trade_tick(ts_nanoseconds, price):
 def spread_formula(mode):
     state = {"last_a": 0.0, "last_b": 0.0, "have_a": False, "have_b": False}
 
-    def processor(input_label, ts_nanoseconds, value):
+    def processor(input_label, ts_nanoseconds, value, order):
         if input_label == "ImbA":
             state["last_a"] = value
             state["have_a"] = True

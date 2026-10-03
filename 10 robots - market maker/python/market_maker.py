@@ -25,10 +25,14 @@ def trade_tick(ts_nanoseconds, price):
     return tse.TseTickTrade(ts_nanoseconds, price, 1.0, int(tse.Side.Trade))
 
 
-def from_signal_params(txn_side, pos_side):
+# A rule leaves undefined whatever it wants the signal to bring. All five rules here leave the quantity
+# undefined, because the size of a quote is the size of the client order that provoked it. Four of them name
+# their side and their price form at build time; the fifth, MmTopUp, leaves those undefined too, and its
+# formula decides them per fire.
+def signal_params(price_type, txn_side, pos_side):
     return tse.make_rule_params(
-        tse.Quantity.FromSignal, 0.0,
-        tse.Price.Market, 0.0, 0.0, 0.0,
+        tse.Quantity.Undefined, 0.0,
+        price_type, 0.0, 0.0, 0.0,
         txn_side, pos_side, tse.Tif.Day, 10,
     )
 
@@ -77,45 +81,80 @@ def main():
         if state["unloading"] and quantity <= lower_threshold:
             state["unloading"] = False
 
-    def open_long(input_label, ts_nanoseconds, value):
+    def open_long(input_label, ts_nanoseconds, value, order):
         refresh_mode()
         if state["unloading"]:
             return False
         if not is_every_second_client_order(state):
             return False
-        return account.get_position_state("MMTEST").side != tse.Side.Short
+        if account.get_position_state("MMTEST").side == tse.Side.Short:
+            return False
+        # The size of the quote is the size of the client order it absorbs, and that is the one field this
+        # rule left to the signal.
+        order.quantity = value
+        return True
 
-    def close_short(input_label, ts_nanoseconds, value):
+    def close_short(input_label, ts_nanoseconds, value, order):
         refresh_mode()
         if not state["unloading"]:
             return False
-        return account.get_position_state("MMTEST").side == tse.Side.Short
+        if account.get_position_state("MMTEST").side != tse.Side.Short:
+            return False
+        order.quantity = value
+        return True
 
-    def open_short(input_label, ts_nanoseconds, value):
+    def open_short(input_label, ts_nanoseconds, value, order):
         refresh_mode()
         if state["unloading"]:
             return False
         if not is_every_second_client_order(state):
             return False
-        return account.get_position_state("MMTEST").side != tse.Side.Long
+        if account.get_position_state("MMTEST").side == tse.Side.Long:
+            return False
+        order.quantity = value
+        return True
 
-    def close_long(input_label, ts_nanoseconds, value):
+    def close_long(input_label, ts_nanoseconds, value, order):
         refresh_mode()
         if not state["unloading"]:
             return False
-        return account.get_position_state("MMTEST").side == tse.Side.Long
+        if account.get_position_state("MMTEST").side != tse.Side.Long:
+            return False
+        order.quantity = value
+        return True
+
+    def top_up(input_label, ts_nanoseconds, value, order):
+        refresh_mode()
+        if state["unloading"]:
+            return False
+        position = account.get_position_state("MMTEST")
+        if position.side != tse.Side.Long:
+            return False
+        if position.quantity >= upper_threshold:
+            return False
+        order.quantity = value
+        order.price = order_price
+        order.txnSide = position.side
+        return True
 
     account.add_pattern_formula("MmOpenLong", tse.Duration.Nanoseconds, ["ClientSells"], open_long)
     account.add_pattern_formula("MmCloseShort", tse.Duration.Nanoseconds, ["ClientSells"], close_short)
     account.add_pattern_formula("MmOpenShort", tse.Duration.Nanoseconds, ["ClientBuys"], open_short)
     account.add_pattern_formula("MmCloseLong", tse.Duration.Nanoseconds, ["ClientBuys"], close_long)
+    account.add_pattern_formula("MmTopUpLong", tse.Duration.Nanoseconds, ["ClientSells"], top_up)
 
-    account.add_rule_market("MmBuyOpen", tse.RuleType.Entry, from_signal_params(tse.Side.Long, tse.Side.Neutral), "MmOpenLong", "MMTEST")
-    account.add_rule_market("MmSellClose", tse.RuleType.Exit, from_signal_params(tse.Side.Short, tse.Side.Long), "MmCloseLong", "MMTEST")
-    account.add_rule_market("MmSellOpen", tse.RuleType.Entry, from_signal_params(tse.Side.Short, tse.Side.Neutral), "MmOpenShort", "MMTEST")
-    account.add_rule_market("MmBuyClose", tse.RuleType.Exit, from_signal_params(tse.Side.Long, tse.Side.Short), "MmCloseShort", "MMTEST")
+    account.add_rule_market("MmBuyOpen", tse.RuleType.Entry, signal_params(tse.Price.Market, tse.Side.Long, tse.Side.Neutral), "MmOpenLong", "MMTEST")
+    account.add_rule_market("MmSellClose", tse.RuleType.Exit, signal_params(tse.Price.Market, tse.Side.Short, tse.Side.Long), "MmCloseLong", "MMTEST")
+    account.add_rule_market("MmSellOpen", tse.RuleType.Entry, signal_params(tse.Price.Market, tse.Side.Short, tse.Side.Neutral), "MmOpenShort", "MMTEST")
+    account.add_rule_market("MmBuyClose", tse.RuleType.Exit, signal_params(tse.Price.Market, tse.Side.Long, tse.Side.Short), "MmCloseShort", "MMTEST")
+    # The fifth rule is the one that cannot know its own order in advance, and it is why the undefined forms
+    # are per field rather than per rule: the size is the client order's, the direction is whatever the
+    # inventory currently is, and the price is a limit instead of a market cross. An entry has to start from a
+    # flat book and an exit has to end at one, so neither of them can grow an existing position - only a
+    # rebalance can, and only it reaches the inventory band this maker is built around.
+    account.add_rule_market("MmTopUp", tse.RuleType.Rebalance, signal_params(tse.Price.Undefined, tse.Side.Undefined, tse.Side.Long), "MmTopUpLong", "MMTEST")
 
-    account.add_robot("NaiveMarketMaker", ["MmBuyOpen", "MmSellClose", "MmSellOpen", "MmBuyClose"])
+    account.add_robot("NaiveMarketMaker", ["MmBuyOpen", "MmSellClose", "MmSellOpen", "MmBuyClose", "MmTopUp"])
     account.portfolio_subscribe(price_mkt, "MMTEST")
     account.start("NaiveMarketMaker")
 

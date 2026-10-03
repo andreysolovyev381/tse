@@ -50,16 +50,21 @@ namespace {
 		return tse::TradeTick {tsNanoseconds, price, 1.0, tse::Side::trade};
 	}
 
-	tse::RuleParams fromSignalParams
+	// A rule leaves undefined whatever it wants the signal to bring. All five rules here leave the quantity
+	// undefined, because the size of a quote is the size of the client order that provoked it. Four of them
+	// name their side and their price form at build time; the fifth, MmTopUp, leaves those undefined too, and
+	// its formula decides them per fire.
+	tse::RuleParams signalParams
 	(
+		tse::PriceType priceType,
 		tse::Side txnSide,
 		tse::Side posSide
 	)
 	{
 		return tse::RuleParams
 		{
-			tse::QuantityMode::from_signal, 0.0,
-			tse::PriceType::market, 0.0, 0.0, 0.0,
+			tse::QuantityMode::undefined, 0.0,
+			priceType, 0.0, 0.0, 0.0,
 			txnSide, posSide, tse::Tif::day, 10
 		};
 	}
@@ -126,52 +131,84 @@ int main()
 	account.addPatternFormula
 	(
 		"MmOpenLong", tse::Duration::nanoseconds, {"ClientSells"},
-		[&state, &account, &refreshMode](std::string const&, std::int64_t, double) -> bool
+		[&state, &account, &refreshMode](std::string const&, std::int64_t, double value, tse::SignalOrder& order) -> bool
 		{
 			refreshMode();
 			if (state.unloading) { return false; }
 			if (not isEverySecondClientOrder(state)) { return false; }
-			return account.getPositionState("MMTEST").side != tse::Side::short_;
+			if (account.getPositionState("MMTEST").side == tse::Side::short_) { return false; }
+			// The size of the quote is the size of the client order it absorbs, and that is the one field
+			// this rule left to the signal.
+			order.quantity = value;
+			return true;
 		}
 	);
 	account.addPatternFormula
 	(
 		"MmCloseShort", tse::Duration::nanoseconds, {"ClientSells"},
-		[&state, &account, &refreshMode](std::string const&, std::int64_t, double) -> bool
+		[&state, &account, &refreshMode](std::string const&, std::int64_t, double value, tse::SignalOrder& order) -> bool
 		{
 			refreshMode();
 			if (not state.unloading) { return false; }
-			return account.getPositionState("MMTEST").side == tse::Side::short_;
+			if (account.getPositionState("MMTEST").side != tse::Side::short_) { return false; }
+			order.quantity = value;
+			return true;
 		}
 	);
 	account.addPatternFormula
 	(
 		"MmOpenShort", tse::Duration::nanoseconds, {"ClientBuys"},
-		[&state, &account, &refreshMode](std::string const&, std::int64_t, double) -> bool
+		[&state, &account, &refreshMode](std::string const&, std::int64_t, double value, tse::SignalOrder& order) -> bool
 		{
 			refreshMode();
 			if (state.unloading) { return false; }
 			if (not isEverySecondClientOrder(state)) { return false; }
-			return account.getPositionState("MMTEST").side != tse::Side::long_;
+			if (account.getPositionState("MMTEST").side == tse::Side::long_) { return false; }
+			order.quantity = value;
+			return true;
 		}
 	);
 	account.addPatternFormula
 	(
 		"MmCloseLong", tse::Duration::nanoseconds, {"ClientBuys"},
-		[&state, &account, &refreshMode](std::string const&, std::int64_t, double) -> bool
+		[&state, &account, &refreshMode](std::string const&, std::int64_t, double value, tse::SignalOrder& order) -> bool
 		{
 			refreshMode();
 			if (not state.unloading) { return false; }
-			return account.getPositionState("MMTEST").side == tse::Side::long_;
+			if (account.getPositionState("MMTEST").side != tse::Side::long_) { return false; }
+			order.quantity = value;
+			return true;
+		}
+	);
+	account.addPatternFormula
+	(
+		"MmTopUpLong", tse::Duration::nanoseconds, {"ClientSells"},
+		[&state, &account, &refreshMode, upperThreshold, orderPrice](std::string const&, std::int64_t, double value, tse::SignalOrder& order) -> bool
+		{
+			refreshMode();
+			if (state.unloading) { return false; }
+			tse::PositionState const position {account.getPositionState("MMTEST")};
+			if (position.side != tse::Side::long_) { return false; }
+			if (position.quantity >= upperThreshold) { return false; }
+			order.quantity = value;
+			order.price = orderPrice;
+			order.txnSide = position.side;
+			return true;
 		}
 	);
 
-	account.addRuleMarket("MmBuyOpen", tse::RuleType::entry, fromSignalParams(tse::Side::long_, tse::Side::neutral), "MmOpenLong", "MMTEST");
-	account.addRuleMarket("MmSellClose", tse::RuleType::exit, fromSignalParams(tse::Side::short_, tse::Side::long_), "MmCloseLong", "MMTEST");
-	account.addRuleMarket("MmSellOpen", tse::RuleType::entry, fromSignalParams(tse::Side::short_, tse::Side::neutral), "MmOpenShort", "MMTEST");
-	account.addRuleMarket("MmBuyClose", tse::RuleType::exit, fromSignalParams(tse::Side::long_, tse::Side::short_), "MmCloseShort", "MMTEST");
+	account.addRuleMarket("MmBuyOpen", tse::RuleType::entry, signalParams(tse::PriceType::market, tse::Side::long_, tse::Side::neutral), "MmOpenLong", "MMTEST");
+	account.addRuleMarket("MmSellClose", tse::RuleType::exit, signalParams(tse::PriceType::market, tse::Side::short_, tse::Side::long_), "MmCloseLong", "MMTEST");
+	account.addRuleMarket("MmSellOpen", tse::RuleType::entry, signalParams(tse::PriceType::market, tse::Side::short_, tse::Side::neutral), "MmOpenShort", "MMTEST");
+	account.addRuleMarket("MmBuyClose", tse::RuleType::exit, signalParams(tse::PriceType::market, tse::Side::long_, tse::Side::short_), "MmCloseShort", "MMTEST");
+	// The fifth rule is the one that cannot know its own order in advance, and it is why the undefined forms
+	// are per field rather than per rule: the size is the client order's, the direction is whatever the
+	// inventory currently is, and the price is a limit instead of a market cross. An entry has to start from
+	// a flat book and an exit has to end at one, so neither of them can grow an existing position - only a
+	// rebalance can, and only it reaches the inventory band this maker is built around.
+	account.addRuleMarket("MmTopUp", tse::RuleType::rebalance, signalParams(tse::PriceType::undefined, tse::Side::undefined, tse::Side::long_), "MmTopUpLong", "MMTEST");
 
-	account.addRobot("NaiveMarketMaker", {"MmBuyOpen", "MmSellClose", "MmSellOpen", "MmBuyClose"});
+	account.addRobot("NaiveMarketMaker", {"MmBuyOpen", "MmSellClose", "MmSellOpen", "MmBuyClose", "MmTopUp"});
 	account.portfolioSubscribe(priceMkt, "MMTEST");
 	account.start("NaiveMarketMaker");
 

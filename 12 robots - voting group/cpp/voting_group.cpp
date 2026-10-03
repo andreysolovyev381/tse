@@ -29,7 +29,7 @@ namespace {
 		double chance
 	)
 	{
-		return [&generator, &draw, chance](std::string const&, std::int64_t, double) -> bool
+		return [&generator, &draw, chance](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 		{
 			return draw(generator) < chance;
 		};

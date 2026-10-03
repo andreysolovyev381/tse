@@ -80,7 +80,7 @@ namespace {
 		account.addPatternFormula
 		(
 			"BulkOpenPattern", tse::Duration::nanoseconds, {"BulkOpenSignal"},
-			[](std::string const&, std::int64_t, double) -> bool
+			[](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 			{
 				return true;
 			},
@@ -89,7 +89,7 @@ namespace {
 		account.addPatternFormula
 		(
 			"BulkExitPattern", tse::Duration::nanoseconds, {"BulkExitSignal"},
-			[](std::string const&, std::int64_t, double) -> bool
+			[](std::string const&, std::int64_t, double, tse::SignalOrder&) -> bool
 			{
 				return true;
 			},

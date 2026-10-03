@@ -2,7 +2,7 @@
 
 The Trading Strategy Engine is a backtesting and trading engine: one shared library behind one narrow C ABI, with C++ and Python wrappers over it, which turns a stream of market data into orders and orders into a book of statistics. The engine is not in this repository.
 
-What is here is thirty strategies written against it, each one twice — once in C++ and once in Python, the same strategy on both surfaces. They are the worked examples of the engine's reference manual, ordered as a course rather than as a catalogue, and they are what a robot looks like when it is written for this engine.
+What is here is thirty-one strategies written against it, each one twice — once in C++ and once in Python, the same strategy on both surfaces. They are the worked examples of the engine's reference manual, ordered as a course rather than as a catalogue, and they are what a robot looks like when it is written for this engine.
 
 ## The whole assembly at a glance
 
@@ -20,7 +20,7 @@ Every example is a directory named `NN group - name`, holding `cpp/` and `python
 
 | Group | Examples | What it teaches |
 | --- | --- | --- |
-| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search over one parameter and over a table of combinations, several contracts, several adapters, save and load, a trading loop |
+| `hello world` | 01–07 | bringing a robot up from nothing: parameters, a first indicator, a grid search over one parameter and over a table of combinations, several contracts, several adapters, save and load, and the first indicator taken live by swapping only its two ends |
 | `robots` | 08–17 | building strategies: a gradient-boosted model, rebalancing, two market makers, a voting group, three order-book strategies, two multileg structures |
 | `risk` | 18–21 | risk computed inside the engine, and risk left resting at the venue as brackets and OCO pairs |
 | `stats` | 22–23 | reading the statistics back, for one robot and for eight robots scored on every core, and selecting among candidates with a model, once more with the scores of one thread and of every core compared |
@@ -95,7 +95,7 @@ On Windows the interpreter is usually called `python`. The shared helpers import
 python3 run_examples.py
 ```
 
-The command above builds and runs all thirty examples; naming examples by their numbers limits the run to them:
+The command above builds and runs all thirty-one examples; naming examples by their numbers limits the run to them:
 
 ```sh
 python3 run_examples.py 02 10
@@ -154,7 +154,7 @@ The engine never inspects the callable — it holds a function pointer of a fixe
 
 ### A Pattern watches Inputs and fires
 
-A pattern is the decision node. It observes one or more inputs by label and emits a signal whenever its condition holds, carrying the timestamp of the input update that produced it. A pattern produces nothing tradeable by itself: a signal becomes an order only through a rule that names the pattern.
+A pattern is the decision node. It observes one or more inputs by label and emits a signal whenever its condition holds, carrying the timestamp of the input update that produced it and an order — a quantity, a price and a transaction side. The five analytic kinds leave that order zeroed, making no proposal of their own; a formula processor fills in whatever it wants the rule to use. A pattern produces nothing tradeable by itself: a signal becomes an order only through a rule that names the pattern.
 
 Six kinds cover the vocabulary of a condition, and each demands an exact number of observed inputs.
 
@@ -163,13 +163,13 @@ Six kinds cover the vocabulary of a condition, and each demands an exact number 
 - `tse_add_pattern_timestamp` — one input: fires once the input timestamp reaches a checkpoint, then every cool-down thereafter.
 - `tse_add_pattern_comparison` — two inputs: fires while one compares against the other at the same timestamp.
 - `tse_add_pattern_crossover` — two inputs: fires on the bar where that comparison flips from false to true.
-- `tse_add_pattern_formula` — any number of inputs: your callback receives each update and decides.
+- `tse_add_pattern_formula` — any number of inputs: your callback receives each update, decides, and fills the order the signal will carry.
 
 The comparison itself is a `TseCmp` value — `tse_cmp_ge`, `tse_cmp_lt`, `tse_cmp_gt`, `tse_cmp_le`, `tse_cmp_eq`, `tse_cmp_ne`. Every builder takes an explicit `TseDuration`: the engine never derives a pattern's duration from the inputs it observes, exactly as it never derives an input's own. Every builder also takes a mandatory core id, which pins the pattern's worker thread or asks for no separate thread at all. The Pattern chapter gives each kind its exact firing semantics.
 
 ### A Rule turns a firing into an order
 
-A rule is the bridge between observation and action. Everything the resulting order will carry is fixed when the rule is built — the transaction side, the position side that must hold, the quantity mode and quantity, the price form and limit price, slippage, fee, time-in-force and the rule's priority among the observers of the same pattern. Those ten values travel together in `TseRuleParams`, and none of them has a library-supplied default. The contract is not one of them: it is named separately, as the trailing `contractSymbol` argument of the builder. The firing supplies only the moment; in the single mode `tse_quantity_from_signal` it also supplies the quantity.
+A rule is the bridge between observation and action. Everything the resulting order will carry is fixed when the rule is built — the transaction side, the position side that must hold, the quantity mode and quantity, the price form and limit price, slippage, fee, time-in-force and the rule's priority among the observers of the same pattern. Those ten values travel together in `TseRuleParams`, and none of them has a library-supplied default. The contract is not one of them: it is named separately, as the trailing `contractSymbol` argument of the builder. Three of the ten may be left undefined — the quantity mode, the price form and the transaction side — and each one left undefined is taken from the order the signal carries, on every firing.
 
 - `tse_add_rule_market` — the market channel proper: an entry, an exit or a rebalance, selected by `TseRuleType` and bound to a pattern.
 - `tse_add_rule_risk` — the stop-loss and take-profit families, fixed or trailing. This rule takes no pattern at all: it watches the position and fires when the unrealized-P&L ratio crosses its threshold.
