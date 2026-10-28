@@ -1,8 +1,6 @@
----
 https://solo76.com
----
 
-# [Trading Backtestign Strategy Engine](https://solo76.com) — examples
+# Trading Backtestign Strategy Engine — examples
 
 The Trading Strategy Engine is a backtesting and trading engine: one shared library behind one narrow C ABI, with C++ and Python wrappers over it, which turns a stream of market data into orders and orders into a book of statistics. The engine is not in this repository.
 
